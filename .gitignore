@@ -1,0 +1,38 @@
+# R / RStudio
+.Rhistory
+.Rapp.history
+.RData
+.Ruserdata
+.Rproj.user/
+.Rproj
+.Rplots.pdf
+.Rbuildignore
+
+# R environment / credentials
+.Renviron
+.Renviron.local
+.Rprofile
+.Rprofile.site
+
+# Package/library artifacts
+.Rcheck/
+_pkgdown.yml
+
+# IDE/editor
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and temp
+*.log
+*.tmp
+*.bak
+
+# Database / Shiny app runtime state
+*.sqlite
+*.sqlite3
+
+
