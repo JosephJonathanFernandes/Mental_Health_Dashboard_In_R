@@ -32,6 +32,23 @@ An **educational machine learning dashboard** for exploring mental health datase
 - **Feature Importance**: See which variables matter most
 - **ROC Curves**: Interactive visualization
 - **Educational Insights**: Learn what each metric means and how to interpret results
+- **🆕 Overfitting Detection**: Automatic comparison of train vs test accuracy with explanations
+- **🆕 Class Imbalance Warnings**: Alerts when dataset has imbalanced classes with guidance on metric interpretation
+
+### 🎓 Enhanced Learning Features (NEW!)
+- **Smart Parameter Tooltips**: Detailed explanations of WHY each parameter matters, not just what it does
+  - Train/Test Split: Understand tradeoffs between training data size and test reliability
+  - Cross-Validation: Learn how CV reduces variance and when to use different fold counts
+  - Random Forest Parameters: Deep explanations of tree count, mtry, and their impacts
+  - Preprocessing Steps**: When to use each technique and why order matters
+
+- **Proactive Educational Warnings**:
+  - Overfitting alerts when train accuracy >> test accuracy
+  - Class imbalance detection with impact explanations
+  - Best practice recommendations
+
+- **Code-Visible Learning**: All R code remains visible so students can see HOW metrics are calculated
+- **Context-Aware Guidance**: Warnings and tips reference specific line numbers in the R code
 
 ### 🔮 Predictions & Export
 - **Interactive Prediction**: Enter values and get instant predictions

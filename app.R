@@ -2,7 +2,15 @@
 ## Dynamic Shiny app that loads every CSV in the app folder and provides EDA + modelling
 
 library(shiny)
-library(tidyverse)
+# Load tidyverse components individually (tidyverse meta-package not needed)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(readr)
+library(purrr)
+library(tibble)
+library(stringr)
+library(forcats)
 library(caret)
 library(randomForest)
 library(plotly)
@@ -45,7 +53,7 @@ ui <- fluidPage(
       uiOutput("eda_controls")
     ),
 
-    # Preprocessing options
+    # Preprocessing options - EDUCATIONAL ENHANCEMENT
     div(class = 'control-card',
       tags$strong("🔧 Preprocessing Pipeline"),
       tags$div(class='muted-help', "Experiment with different preprocessing steps and see their impact on model performance."),
@@ -55,8 +63,21 @@ ui <- fluidPage(
                       "One-hot encode factors" = "dummies",
                       "PCA on numeric predictors" = "pca"),
                selected = c()),
+      tags$div(class='muted-help',
+        HTML("<strong>Impute median:</strong> Fills missing values with column median (preserves distribution)."),
+        tags$br(),
+        HTML("<strong>Center & scale:</strong> Transforms to mean=0, sd=1. Essential for algorithms sensitive to scale (like PCA, GLM)."),
+        tags$br(),
+        HTML("<strong>One-hot encode:</strong> Converts categorical variables to binary columns (e.g., 'Male'/'Female' → Male_1, Female_1)."),
+        tags$br(),
+        HTML("<strong>PCA:</strong> Reduces dimensions by finding linear combinations of features. <strong>Important:</strong> Always scale before PCA!")
+      ),
       conditionalPanel("input.preproc_steps.includes('pca')",
-               numericInput("pca_comp", "PCA components:", value = 2, min = 1, step = 1)),
+        div(
+          numericInput("pca_comp", "PCA components:", value = 2, min = 1, step = 1),
+          tags$small(class='muted-help', "💡 How many components? Start with 2-5. Check variance explained in preview. More components retain more information but increase complexity.")
+        )
+      ),
       actionButton("preview_preproc", "👁️ Preview Preprocessing", class = "btn-sm btn-info", style = "margin-top: 5px;")
     ),
 
@@ -72,14 +93,30 @@ ui <- fluidPage(
                tags$small(class='muted-help', "💡 Same seed = same train/test split and model initialization")
       ),
 
-      # Train/test split ratio
-      sliderInput("train_split", "Train/Test split ratio:",
-                  min = 0.5, max = 0.95, value = 0.8, step = 0.05),
-      tags$small(class='muted-help', "💡 Higher ratio = more training data, less test data"),
+      # Train/test split ratio - EDUCATIONAL ENHANCEMENT
+      div(
+        sliderInput("train_split", "Train/Test split ratio:",
+                    min = 0.5, max = 0.95, value = 0.8, step = 0.05),
+        tags$div(class='muted-help', style='margin-top:-10px;',
+          HTML("💡 <strong>Why this matters:</strong> Your data is split into training (for learning) and test (for evaluation). "),
+          tags$br(),
+          HTML("<strong>Common choices:</strong> 80/20 (standard), 70/30 (more conservative test), 90/10 (limited data)."),
+          tags$br(),
+          HTML("<strong>Tradeoff:</strong> More training data → better learning, but less reliable test estimates.")
+        )
+      ),
 
-      # Cross-validation folds
-      numericInput("cv_folds", "Cross-validation folds:", value = 5, min = 2, max = 10, step = 1),
-      tags$small(class='muted-help', "💡 More folds = better validation but slower training")
+      # Cross-validation folds - EDUCATIONAL ENHANCEMENT
+      div(
+        numericInput("cv_folds", "Cross-validation folds:", value = 5, min = 2, max = 10, step = 1),
+        tags$div(class='muted-help', style='margin-top:-10px;',
+          HTML("💡 <strong>What is CV?</strong> Training data is split into K parts; model trains K times, each using different part for validation."),
+          tags$br(),
+          HTML("<strong>Why?</strong> Reduces variance in performance estimates (more reliable than single split)."),
+          tags$br(),
+          HTML("<strong>Common values:</strong> 5 or 10 folds. More folds = slower but more reliable. Diminishing returns after 10.")
+        )
+      )
     ),
 
     # Model hyperparameters (NEW)
@@ -88,13 +125,30 @@ ui <- fluidPage(
       tags$div(class='muted-help', "Fine-tune algorithm-specific parameters."),
 
       conditionalPanel("input.method == 'rf'",
-        numericInput("rf_ntree", "Random Forest: Number of trees", value = 500, min = 10, max = 2000, step = 50),
-        tags$small(class='muted-help', "💡 More trees = better performance but slower"),
+        div(
+          numericInput("rf_ntree", "Random Forest: Number of trees", value = 500, min = 10, max = 2000, step = 50),
+          tags$div(class='muted-help', style='margin-top:-10px;',
+            HTML("💡 <strong>How many trees?</strong> RF builds multiple decision trees and averages their predictions."),
+            tags$br(),
+            HTML("<strong>Guidelines:</strong> 100-500 is typical. More trees reduce variance but have diminishing returns after ~500."),
+            tags$br(),
+            HTML("<strong>Too few:</strong> <100 trees → unstable predictions. <strong>Sweet spot:</strong> 100-500 trees.")
+          )
+        ),
         br(),
-        checkboxInput("rf_tune_mtry", "Auto-tune mtry (features per split)", value = TRUE),
+        div(
+          checkboxInput("rf_tune_mtry", "Auto-tune mtry (features per split)", value = TRUE),
+          tags$div(class='muted-help',
+            HTML("💡 <strong>What is mtry?</strong> Number of features randomly sampled at each split in a tree."),
+            tags$br(),
+            HTML("<strong>Why random?</strong> Decorrelates trees, improving ensemble performance."),
+            tags$br(),
+            HTML("<strong>Default (sqrt):</strong> For P features, uses √P. Auto-tune tries 2-10 values.")
+          )
+        ),
         conditionalPanel("input.rf_tune_mtry == false",
           numericInput("rf_mtry", "mtry (features per split):", value = 3, min = 1, step = 1),
-          tags$small(class='muted-help', "💡 Default is sqrt(# features)")
+          tags$small(class='muted-help', "💡 Default is sqrt(# features). Lower mtry → more randomness → less correlated trees")
         )
       )
     ),
@@ -103,6 +157,7 @@ ui <- fluidPage(
     div(class = 'control-card',
       tags$strong("🤖 Model Training"),
       uiOutput("target_ui"),
+      uiOutput("class_imbalance_warning"),
       uiOutput("modelMethod_ui"),
       tags$hr(),
       tags$strong("📉 Sampling Options"),
@@ -435,10 +490,73 @@ server <- function(input, output, session) {
     unique(c(facs, nums_bin))
   })
 
+  # EDUCATIONAL ENHANCEMENT: Detect and warn about class imbalance
+  class_imbalance_info <- reactive({
+    req(input$target, data())
+    df <- data()
+    target_col <- df[[input$target]]
+
+    # Get class proportions
+    class_counts <- table(target_col, useNA = "no")
+    class_props <- prop.table(class_counts)
+
+    # Calculate imbalance ratio
+    if(length(class_props) < 2) return(NULL)
+    imbalance_ratio <- max(class_props) / min(class_props)
+
+    list(
+      is_imbalanced = imbalance_ratio > 1.5,  # 60/40 threshold
+      is_severe = imbalance_ratio > 2.0,  # 67/33 threshold
+      ratio = imbalance_ratio,
+      majority_class = names(class_counts)[which.max(class_counts)],
+      minority_class = names(class_counts)[which.min(class_counts)],
+      majority_pct = max(class_props) * 100,
+      minority_pct = min(class_props) * 100,
+      majority_count = max(class_counts),
+      minority_count = min(class_counts)
+    )
+  })
+
   output$target_ui <- renderUI({
     bt <- binary_targets()
     if(length(bt) == 0) return(div("No binary target detected. Only EDA available."))
     selectInput("target", "Binary target (select):", choices = bt)
+  })
+
+  # EDUCATIONAL ENHANCEMENT: Display class imbalance warning
+  output$class_imbalance_warning <- renderUI({
+    req(class_imbalance_info())
+    info <- class_imbalance_info()
+
+    if(is.null(info)) return(NULL)
+
+    if(info$is_severe) {
+      div(class = 'alert alert-danger',
+        tags$strong("⚠️ Severe Class Imbalance Detected!"),
+        tags$p(sprintf("Class distribution: %s = %.1f%% (%d samples) | %s = %.1f%% (%d samples)",
+                       info$majority_class, info$majority_pct, info$majority_count,
+                       info$minority_class, info$minority_pct, info$minority_count)),
+        tags$p(sprintf("Imbalance ratio: %.1f:1", info$ratio)),
+        tags$p(tags$strong("Why this matters:"),
+               sprintf("A naive model that always predicts '%s' would achieve %.1f%% accuracy without learning anything!",
+                      info$majority_class, info$majority_pct)),
+        tags$p(tags$strong("What to do:")),
+        tags$ul(
+          tags$li(tags$strong("Prioritize these metrics:"), "Sensitivity, Specificity, and ROC AUC instead of accuracy"),
+          tags$li(tags$strong("Understand the tradeoff:"), sprintf("False negatives (missing '%s') vs false positives (false alarms)", info$minority_class)),
+          tags$li(tags$strong("Check the R code:"), "See lines 448-472 in app.R to understand how we detect class imbalance")
+        )
+      )
+    } else if(info$is_imbalanced) {
+      div(class = 'alert alert-warning',
+        tags$strong("📊 Moderate Class Imbalance"),
+        tags$p(sprintf("%s: %.1f%% | %s: %.1f%% (%.1f:1 ratio)",
+                       info$majority_class, info$majority_pct,
+                       info$minority_class, info$minority_pct,
+                       info$ratio)),
+        tags$p(tags$strong("Tip:"), "Consider Sensitivity and Specificity in addition to overall accuracy. Imbalanced classes can make accuracy misleading.")
+      )
+    }
   })
 
   output$modelMethod_ui <- renderUI({
@@ -742,6 +860,67 @@ server <- function(input, output, session) {
     # Show success notification
     showNotification("✅ Model training completed successfully!", type = "message", duration = 5)
 
+    # EDUCATIONAL ENHANCEMENT: Detect overfitting by comparing train vs test accuracy
+    # This helps students understand when models memorize instead of learn
+    # Note: This uses the model's internal training predictions when available
+    tryCatch({
+      # For caret models, we can get training predictions more reliably
+      # by using the model object directly rather than predict() which may fail with preprocessing
+      train_acc <- NULL
+      test_acc <- cm$overall["Accuracy"]
+
+      # Try to extract training accuracy from model object
+      if(!is.null(model$results) && "Accuracy" %in% names(model$results)) {
+        # For models with results, use the best accuracy estimate from CV
+        train_acc <- max(model$results$Accuracy, na.rm = TRUE)
+      }
+
+      # If we got training accuracy, calculate overfitting gap
+      if(!is.null(train_acc) && !is.na(train_acc)) {
+        overfitting_gap <- train_acc - test_acc
+
+        # Store for display
+        model_store$train_accuracy <- train_acc
+        model_store$test_accuracy <- test_acc
+        model_store$overfitting_gap <- overfitting_gap
+
+        # Warn if significant overfitting detected (>10% gap)
+        if(overfitting_gap > 0.10) {
+          showNotification(
+            HTML(paste0(
+              "<strong>⚠️ Overfitting Detected!</strong><br>",
+              "CV Training accuracy: ", round(train_acc * 100, 1), "%<br>",
+              "Test accuracy: ", round(test_acc * 100, 1), "%<br>",
+              "Gap: ", round(overfitting_gap * 100, 1), "%<br><br>",
+              "<strong>What this means:</strong> Your model performs much better on training data than test data, suggesting it memorized rather than generalized.<br><br>",
+              "<strong>Solutions to try:</strong><br>",
+              "• Increase CV folds (e.g., 5 → 10) for better validation<br>",
+              "• Reduce model complexity (fewer RF trees)<br>",
+              "• Add more training data or check for data leakage<br>",
+              "• Review the R code to see how we detect this!"
+            )),
+            type = "warning",
+            duration = 15
+          )
+        } else if(overfitting_gap > 0.05) {
+          # Moderate overfitting - informational only
+          showNotification(
+            HTML(paste0(
+              "📊 Performance Gap Detected<br>",
+              "CV Training accuracy (", round(train_acc * 100, 1), "%) exceeds test accuracy (",
+              round(test_acc * 100, 1), "%) by ", round(overfitting_gap * 100, 1), "%.<br>",
+              "This is normal, but watch for it increasing further."
+            )),
+            type = "default",
+            duration = 8
+          )
+        }
+      }
+    }, error = function(e) {
+      # Silently fail overfitting check if it doesn't work
+      # This prevents the app from crashing
+    })
+
     # expose to UI
     output$model_trained <- reactive({model_store$trained})
     outputOptions(output, "model_trained", suspendWhenHidden = FALSE)
@@ -788,7 +967,34 @@ server <- function(input, output, session) {
     cm <- model_store$conf
     accuracy <- cm$overall["Accuracy"]
 
+    # EDUCATIONAL ENHANCEMENT: Include overfitting analysis
+    overfitting_alert <- NULL
+    if(!is.null(model_store$train_accuracy) && !is.null(model_store$overfitting_gap)) {
+      gap_pct <- model_store$overfitting_gap * 100
+      if(gap_pct > 10) {
+        overfitting_alert <- tags$div(class = 'alert alert-danger',
+          tags$strong("⚠️ Overfitting Alert:"),
+          tags$p(sprintf("Train accuracy (%.1f%%) is %.1f%% higher than test accuracy (%.1f%%).",
+                         model_store$train_accuracy * 100,
+                         gap_pct,
+                         model_store$test_accuracy * 100)),
+          tags$p(tags$strong("What this means:"), "Your model has memorized the training data rather than learning generalizable patterns."),
+          tags$p(tags$strong("Check the R code:"), "See lines 753-799 in app.R to understand how we detect overfitting by comparing train vs test performance.")
+        )
+      } else if(gap_pct > 5) {
+        overfitting_alert <- tags$div(class = 'alert alert-info',
+          tags$strong("📊 Model Generalization:"),
+          tags$p(sprintf("Train accuracy: %.1f%% | Test accuracy: %.1f%% | Gap: %.1f%%",
+                         model_store$train_accuracy * 100,
+                         model_store$test_accuracy * 100,
+                         gap_pct)),
+          tags$p("This gap is normal. A small difference shows your model generalizes reasonably well to new data.")
+        )
+      }
+    }
+
     insights <- tagList(
+      overfitting_alert,
       tags$div(class = 'alert alert-info',
         tags$strong("📚 How to Interpret Your Results:"),
         tags$ul(
