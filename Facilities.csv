@@ -1,4 +1,4 @@
-Country,Year,Mental _hospitals,health_units,outpatient _facilities,day _treatment,residential_facilities
+Country,Year,Mental_hospitals,health_units,outpatient_facilities,day_treatment,residential_facilities
 Afghanistan,2016,0.003,0.012,0.006,,
 Albania,2016,0.068,0.068,0.41,,0.445
 Algeria,2016,0.048,0.068,0.048,,
