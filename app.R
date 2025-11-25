@@ -1072,7 +1072,7 @@ server <- function(input, output, session) {
         geom_col(fill = "#2c7fb8") + coord_flip() +
         labs(x = NULL, y = "Importance (%)", title = "Feature importance (relative %)") +
         geom_text(aes(label = sprintf("%.1f%%", pct)), hjust = -0.1, size = 3) +
-        theme_minimal() + theme(plot.margin = margin(5, 40, 5, 5)) +
+        theme_minimal() + theme(plot.margin = ggplot2::margin(5, 40, 5, 5)) +
         scale_y_continuous(expand = expansion(mult = c(0, .15)))
       return(p)
     })
@@ -1140,7 +1140,7 @@ server <- function(input, output, session) {
       nums <- df %>% select(where(is.numeric))
       if(ncol(nums) == 0) return(NULL)
       coln <- names(nums)[1]
-  p <- ggplot(df, aes_string(x = coln)) + geom_histogram(bins = 20, fill = "steelblue") + labs(title = paste0(coln, " distribution"))
+  p <- ggplot(df, aes(x = .data[[coln]])) + geom_histogram(bins = 20, fill = "steelblue") + labs(title = paste0(coln, " distribution"))
   safe_ggplotly(p)
     }
   })
@@ -1167,7 +1167,7 @@ server <- function(input, output, session) {
     cats <- names(df)[sapply(df, is.factor) & names(df) != input$target]
     if(length(cats) == 0) return(NULL)
     var <- cats[1]
-  p <- ggplot(df, aes_string(x = var, fill = input$target)) + geom_bar(position = "fill") + labs(y = "Proportion", title = paste0(var, " vs ", input$target))
+  p <- ggplot(df, aes(x = .data[[var]], fill = .data[[input$target]])) + geom_bar(position = "fill") + labs(y = "Proportion", title = paste0(var, " vs ", input$target))
   safe_ggplotly(p)
   })
 
@@ -1183,69 +1183,95 @@ server <- function(input, output, session) {
     catvar <- input$eda_cat
 
     # use target if available for coloring
-    color_by <- if(!is.null(input$target) && input$target %in% names(df)) input$target else NULL
+    color_by <- NULL
+    if(!is.null(input$target) && input$target %in% names(df)) {
+      color_by <- input$target
+    }
+    
+    # ensure selected variables exist in dataset
+    if(!is.null(xvar) && !xvar %in% names(df)) xvar <- NULL
+    if(!is.null(yvar) && !yvar %in% names(df)) yvar <- NULL
+    if(!is.null(catvar) && !catvar %in% names(df)) catvar <- NULL
 
     p <- NULL
     # read appearance controls with safe defaults
     bins_in <- if(!is.null(input$bins)) as.integer(input$bins) else 30
+    hist_fill <- if(!is.null(input$hist_fill)) input$hist_fill else "steelblue"
+    alpha_in <- if(!is.null(input$alpha)) input$alpha else 0.8
     point_size <- if(!is.null(input$point_size)) input$point_size else 2
     add_jitter <- isTRUE(input$add_jitter)
     jitter_width <- if(!is.null(input$jitter_width)) input$jitter_width else 0.2
     add_smooth <- isTRUE(input$add_smooth)
+    smooth_method <- if(!is.null(input$smooth_method)) input$smooth_method else "loess"
+    smooth_span <- if(!is.null(input$smooth_span)) input$smooth_span else 0.75
     axis_transform <- if(!is.null(input$axis_transform)) input$axis_transform else "none"
 
     try({
       if(pt == "Histogram"){
         req(xvar)
-        p <- ggplot(df, aes_string(x = xvar, fill = color_by)) + geom_histogram(alpha = 0.7, bins = bins_in) + labs(title = paste0("Histogram of ", xvar))
+        if(!is.null(color_by) && color_by %in% names(df)){
+          p <- ggplot(df, aes(x = .data[[xvar]], fill = .data[[color_by]])) + geom_histogram(alpha = alpha_in, bins = bins_in) + labs(title = paste0("Histogram of ", xvar))
+        } else {
+          p <- ggplot(df, aes(x = .data[[xvar]])) + geom_histogram(alpha = alpha_in, bins = bins_in, fill = hist_fill) + labs(title = paste0("Histogram of ", xvar))
+        }
         if(axis_transform != "none") p <- p + scale_x_continuous(trans = axis_transform)
       } else if(pt == "Density"){
         req(xvar)
-        if(!is.null(color_by)){
-          p <- ggplot(df, aes_string(x = xvar, color = color_by, fill = color_by)) + geom_density(alpha = 0.3) + labs(title = paste0("Density of ", xvar))
+        if(!is.null(color_by) && color_by %in% names(df)){
+          p <- ggplot(df, aes(x = .data[[xvar]], color = .data[[color_by]], fill = .data[[color_by]])) + geom_density(alpha = alpha_in) + labs(title = paste0("Density of ", xvar))
         } else {
-          p <- ggplot(df, aes_string(x = xvar)) + geom_density(fill = "steelblue", alpha = 0.5) + labs(title = paste0("Density of ", xvar))
+          p <- ggplot(df, aes(x = .data[[xvar]])) + geom_density(fill = hist_fill, alpha = alpha_in) + labs(title = paste0("Density of ", xvar))
         }
         if(axis_transform != "none") p <- p + scale_x_continuous(trans = axis_transform)
       } else if(pt == "Boxplot"){
         req(xvar)
-        if(!is.null(color_by)){
-          p <- ggplot(df, aes_string(x = color_by, y = xvar, fill = color_by)) + geom_boxplot()
-          if(add_jitter) p <- p + geom_jitter(position = position_jitter(width = jitter_width), size = point_size, alpha = 0.7)
+        if(!is.null(color_by) && color_by %in% names(df)){
+          p <- ggplot(df, aes(x = .data[[color_by]], y = .data[[xvar]], fill = .data[[color_by]])) + geom_boxplot()
+          if(add_jitter) p <- p + geom_jitter(position = position_jitter(width = jitter_width), size = point_size, alpha = alpha_in)
           p <- p + labs(title = paste0("Boxplot of ", xvar, " by ", color_by))
         } else {
-          p <- ggplot(df, aes_string(y = xvar)) + geom_boxplot(fill = "steelblue") + labs(title = paste0("Boxplot of ", xvar))
-          if(add_jitter) p <- p + geom_jitter(width = jitter_width, size = point_size, alpha = 0.7)
+          p <- ggplot(df, aes(x = "", y = .data[[xvar]])) + geom_boxplot(fill = hist_fill) + labs(title = paste0("Boxplot of ", xvar), x = NULL)
+          if(add_jitter) p <- p + geom_jitter(width = jitter_width, size = point_size, alpha = alpha_in)
+        }
         }
         if(axis_transform != "none") p <- p + scale_y_continuous(trans = axis_transform)
       } else if(pt == "Violin"){
         req(xvar)
-        if(!is.null(color_by)){
-          p <- ggplot(df, aes_string(x = color_by, y = xvar, fill = color_by)) + geom_violin(alpha = 0.7)
-          if(add_jitter) p <- p + geom_jitter(position = position_jitter(width = jitter_width), size = point_size, alpha = 0.6)
+        if(!is.null(color_by) && color_by %in% names(df)){
+          p <- ggplot(df, aes(x = .data[[color_by]], y = .data[[xvar]], fill = .data[[color_by]])) + geom_violin(alpha = alpha_in)
+          if(add_jitter) p <- p + geom_jitter(position = position_jitter(width = jitter_width), size = point_size, alpha = alpha_in*0.8)
           p <- p + labs(title = paste0("Violin of ", xvar, " by ", color_by))
         } else {
-          p <- ggplot(df, aes_string(y = xvar)) + geom_violin(fill = "steelblue", alpha = 0.7) + labs(title = paste0("Violin of ", xvar))
-          if(add_jitter) p <- p + geom_jitter(width = jitter_width, size = point_size, alpha = 0.6)
+          p <- ggplot(df, aes(x = "", y = .data[[xvar]])) + geom_violin(fill = hist_fill, alpha = alpha_in) + labs(title = paste0("Violin of ", xvar), x = NULL)
+          if(add_jitter) p <- p + geom_jitter(width = jitter_width, size = point_size, alpha = alpha_in*0.8)
+        }
         }
         if(axis_transform != "none") p <- p + scale_y_continuous(trans = axis_transform)
       } else if(pt == "Bar"){
         req(catvar)
-        p <- ggplot(df, aes_string(x = catvar)) + geom_bar(fill = "steelblue") + labs(title = paste0("Count of ", catvar))
+        p <- ggplot(df, aes(x = .data[[catvar]])) + geom_bar(fill = hist_fill) + labs(title = paste0("Count of ", catvar))
       } else if(pt == "Stacked Bar"){
         req(catvar)
         req(color_by)
-        p <- ggplot(df, aes_string(x = catvar, fill = color_by)) + geom_bar(position = "fill") + labs(y = "Proportion", title = paste0(catvar, " by ", color_by))
+        p <- ggplot(df, aes(x = .data[[catvar]], fill = .data[[color_by]])) + geom_bar(position = "fill") + labs(y = "Proportion", title = paste0(catvar, " by ", color_by))
       } else if(pt == "Scatter"){
         req(xvar, yvar)
-        if(!is.null(color_by)){
-          if(add_jitter) p <- ggplot(df, aes_string(x = xvar, y = yvar, color = color_by)) + geom_jitter(width = jitter_width, height = jitter_width, size = point_size, alpha = 0.8)
-          else p <- ggplot(df, aes_string(x = xvar, y = yvar, color = color_by)) + geom_point(size = point_size, alpha = 0.8)
-          if(add_smooth) p <- p + geom_smooth(method = "loess", se = FALSE)
+        if(is.null(xvar) || is.null(yvar) || !xvar %in% names(df) || !yvar %in% names(df)) {
+          p <- ggplot() + geom_text(aes(x = 0.5, y = 0.5, label = "Please select valid X and Y variables"), size = 5) + theme_void()
+        } else if(!is.null(color_by) && color_by %in% names(df)){
+          if(add_jitter) p <- ggplot(df, aes(x = .data[[xvar]], y = .data[[yvar]], color = .data[[color_by]])) + geom_jitter(width = jitter_width, height = jitter_width, size = point_size, alpha = alpha_in)
+          else p <- ggplot(df, aes(x = .data[[xvar]], y = .data[[yvar]], color = .data[[color_by]])) + geom_point(size = point_size, alpha = alpha_in)
+          if(add_smooth) {
+            if(smooth_method == "loess") p <- p + geom_smooth(method = "loess", span = smooth_span, se = FALSE)
+            else p <- p + geom_smooth(method = "lm", se = FALSE)
+          }
         } else {
-          if(add_jitter) p <- ggplot(df, aes_string(x = xvar, y = yvar)) + geom_jitter(width = jitter_width, height = jitter_width, size = point_size, alpha = 0.8)
-          else p <- ggplot(df, aes_string(x = xvar, y = yvar)) + geom_point(size = point_size, alpha = 0.8)
-          if(add_smooth) p <- p + geom_smooth(method = "loess", se = FALSE)
+          if(add_jitter) p <- ggplot(df, aes(x = .data[[xvar]], y = .data[[yvar]])) + geom_jitter(width = jitter_width, height = jitter_width, size = point_size, alpha = alpha_in)
+          else p <- ggplot(df, aes(x = .data[[xvar]], y = .data[[yvar]])) + geom_point(size = point_size, alpha = alpha_in)
+          if(add_smooth) {
+            if(smooth_method == "loess") p <- p + geom_smooth(method = "loess", span = smooth_span, se = FALSE)
+            else p <- p + geom_smooth(method = "lm", se = FALSE)
+          }
         }
         if(axis_transform != "none"){
           p <- p + scale_x_continuous(trans = axis_transform) + scale_y_continuous(trans = axis_transform)
@@ -1280,7 +1306,7 @@ server <- function(input, output, session) {
     nums <- df %>% select(where(is.numeric))
     if(ncol(nums) == 0) return(NULL)
     var <- names(nums)[1]
-    p <- ggplot(df, aes_string(x = input$target, y = var, fill = input$target)) + geom_boxplot() + labs(title = paste0('Boxplot of ', var, ' by ', input$target))
+    p <- ggplot(df, aes(x = .data[[input$target]], y = .data[[var]], fill = .data[[input$target]])) + geom_boxplot() + labs(title = paste0('Boxplot of ', var, ' by ', input$target))
     safe_ggplotly(p)
   })
 
@@ -1292,7 +1318,7 @@ server <- function(input, output, session) {
     nums <- df %>% select(where(is.numeric))
     if(ncol(nums) == 0) return(NULL)
     var <- names(nums)[1]
-    p <- ggplot(df, aes_string(x = var, color = input$target, fill = input$target)) + geom_density(alpha = 0.3) + labs(title = paste0('Density of ', var, ' by ', input$target))
+    p <- ggplot(df, aes(x = .data[[var]], color = .data[[input$target]], fill = .data[[input$target]])) + geom_density(alpha = 0.3) + labs(title = paste0('Density of ', var, ' by ', input$target))
     safe_ggplotly(p)
   })
 
